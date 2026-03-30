@@ -1,0 +1,37 @@
+#!/bin/bash
+S3_BUCKET='data-ingestion-bucket-8010'
+S3_KEY='sample_data.csv'
+RDS_HOST='mydb.cfcciywasgl9.ap-south-1.rds.amazonaws.com'
+RDS_USER='admin'
+RDS_PASS='Password123!'
+RDS_DB='testdb'
+RDS_TABLE='people'
+GLUE_DB='fallback_db'
+REGION='ap-south-1'
+LOG_FILE='/tmp/ingest.log'
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a $LOG_FILE; }
+log '========== PIPELINE STARTED =========='
+# Step 1: Download from S3
+log 'Downloading CSV from S3...'
+aws s3 cp s3://$S3_BUCKET/$S3_KEY /tmp/data.csv --region $REGION
+[ $? -ne 0 ] && log 'ERROR: S3 download failed' && exit 1
+# Step 2: Insert into RDS
+log 'Inserting data into RDS...'
+tail -n +2 /tmp/data.csv | while IFS=',' read id name age email; do
+mysql -h $RDS_HOST -u $RDS_USER -p$RDS_PASS $RDS_DB --ssl-mode=0 \-e "INSER>
+[ $? -ne 0 ] && RDS_FAILED=true && break
+done
+# Step 3: Verify or fallback
+COUNT=$(mysql -h $RDS_HOST -u $RDS_USER -p$RDS_PASS $RDS_DB --ssl-mode=0 \->
+if [ "$COUNT" -gt '0' ]; then
+log "SUCCESS: $COUNT records in RDS"
+else
+log 'RDS failed — switching to Glue fallback...'
+aws glue create-table --region $REGION --database-name $GLUE_DB --ssl-mode=>
+"Columns":[{"Name":"id","Type":"int"},...],
+"Location":"s3://data-ingestion-bucket-8010/",
+"InputFormat":"org.apache.hadoop.mapred.TextInputFormat",
+"SerdeInfo":{"SerializationLibrary":"...LazySimpleSerDe",
+"Parameters":{"field.delim":","}}}}'
+log 'SUCCESS: Glue fallback table created'
+fi
