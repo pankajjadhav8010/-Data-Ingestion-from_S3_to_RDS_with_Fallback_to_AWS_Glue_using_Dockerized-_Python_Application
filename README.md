@@ -1,62 +1,72 @@
-📦 Resilient Data Ingestion Pipeline (S3 → RDS with Glue Fallback) using Docker (Shell Script)
-📌 Project Overview
+# Resilient Data Ingestion Pipeline (S3 to RDS with Glue Fallback) using Docker
 
-This project implements a fault-tolerant data ingestion pipeline using a Shell Script, where data is read from S3 and inserted into RDS.
+## Project Overview
 
-If the database is unavailable, the system automatically falls back to AWS Glue, ensuring reliability and zero data loss.
+This project implements a fault-tolerant data ingestion pipeline using a shell script. The pipeline reads CSV data from Amazon S3 and attempts to insert it into an Amazon RDS database. If the database is unavailable or the insertion fails, the system automatically falls back to AWS Glue to ensure that data is not lost.
 
-🎯 Objective
-Read CSV data from S3
-Insert data into RDS (MySQL-compatible)
-Automatically fallback to Glue if RDS fails
-Containerize using Docker
-Build a lightweight, script-based ingestion system
-🏗️ Architecture Overview
+The solution is containerized using Docker, making it portable and easy to deploy across environments.
 
-AWS Services Used:
+## Objective
 
-Amazon S3 → Data source
-Amazon RDS → Primary database
-AWS Glue → Fallback system
-Docker → Containerization
-🔄 Data Flow
-S3 (CSV File)
-     ↓
-Shell Script (.sh)
-     ↓
-Try → RDS (MySQL CLI)
-     ↓
-If Failure ❌
-     ↓
-Fallback → AWS Glue (Catalog Table)
-📂 Project Structure
+* Read CSV data from Amazon S3
+* Insert data into Amazon RDS (MySQL-compatible)
+* Automatically fall back to AWS Glue in case of failure
+* Containerize the application using Docker
+* Build a lightweight and reliable ingestion system
+
+## Architecture Overview
+
+### Services Used
+
+* Amazon S3 (Data Source)
+* Amazon RDS (Primary Database)
+* AWS Glue (Fallback System)
+* Docker (Containerization)
+
+## Data Flow
+
+1. Data is stored in Amazon S3 as a CSV file
+2. A shell script downloads the file
+3. The script attempts to insert data into Amazon RDS
+4. If the insertion fails, the script uploads the data to S3 and registers it in AWS Glue
+
+## Project Structure
+
+```
 .
-├── ingest.sh             # Main shell script
-├── Dockerfile            # Docker configuration
-├── config.env            # Environment variables
+├── ingest.sh
+├── Dockerfile
+├── config.env
 └── README.md
-⚙️ Shell Script Functionality
-📌 Features:
-Downloads CSV from S3 using AWS CLI
-Loads data into RDS using MySQL CLI
-Detects failure using exit status ($?)
-Falls back to AWS Glue using AWS CLI
-Logs execution steps
-🧾 Sample Shell Script (ingest.sh)
+```
+
+## Shell Script Functionality
+
+### Features
+
+* Downloads CSV file from S3 using AWS CLI
+* Loads data into RDS using MySQL CLI
+* Detects failure using exit status
+* Falls back to AWS Glue using AWS CLI
+* Logs execution steps
+
+## Shell Script (ingest.sh)
+
+```bash
 #!/bin/bash
 
 set -e
 
 echo "Starting Data Ingestion..."
 
-# Load config
+# Load configuration
 source config.env
 
 # Step 1: Download file from S3
 echo "Downloading file from S3..."
 aws s3 cp s3://$S3_BUCKET/$S3_KEY /tmp/data.csv
 
-# Step 2: Try inserting into RDS
+# Step 2: Insert into RDS
 echo "Uploading data to RDS..."
 
 mysql -h $RDS_HOST -u $RDS_USER -p$RDS_PASSWORD $RDS_DB <<EOF
@@ -67,16 +77,14 @@ LINES TERMINATED BY '\n'
 IGNORE 1 ROWS;
 EOF
 
-# Check status
+# Step 3: Check status and fallback
 if [ $? -eq 0 ]; then
-    echo "Data inserted into RDS successfully ✅"
+    echo "Data inserted into RDS successfully"
 else
-    echo "RDS failed ❌ Falling back to Glue..."
+    echo "RDS failed. Falling back to Glue"
 
-    # Step 3: Upload file for Glue usage
     aws s3 cp /tmp/data.csv $GLUE_S3_PATH
 
-    # Step 4: Create Glue Table
     aws glue create-table --database-name $GLUE_DB --table-input '{
         "Name": "'$GLUE_TABLE'",
         "StorageDescriptor": {
@@ -90,10 +98,15 @@ else
         "TableType": "EXTERNAL_TABLE"
     }'
 
-    echo "Glue fallback executed successfully ✅"
+    echo "Glue fallback executed successfully"
 fi
-🐳 Docker Setup
-📌 Dockerfile
+```
+
+## Docker Configuration
+
+### Dockerfile
+
+```
 FROM amazonlinux:2
 
 RUN yum install -y mysql aws-cli
@@ -106,7 +119,11 @@ COPY config.env .
 RUN chmod +x ingest.sh
 
 CMD ["./ingest.sh"]
-⚙️ Configuration (config.env)
+```
+
+## Configuration File (config.env)
+
+```
 S3_BUCKET=your-bucket-name
 S3_KEY=data/sample.csv
 
@@ -119,68 +136,79 @@ RDS_TABLE=yourtable
 GLUE_DB=your_glue_db
 GLUE_TABLE=your_glue_table
 GLUE_S3_PATH=s3://your-bucket/glue-data/
-▶️ Build & Run
-Build Docker Image
+```
+
+## Build and Run
+
+### Build Docker Image
+
+```
 docker build -t ingestion-shell-app .
-Run Container
+```
+
+### Run Container
+
+```
 docker run --env-file config.env ingestion-shell-app
-📊 Expected Output
-✅ RDS Success
+```
+
+## Expected Output
+
+### Successful RDS Ingestion
+
+```
 Starting Data Ingestion...
 Downloading file from S3...
 Uploading data to RDS...
 Data inserted into RDS successfully
-❌ RDS Failure → Glue
-RDS failed Falling back to Glue...
+```
+
+### RDS Failure with Glue Fallback
+
+```
+Starting Data Ingestion...
+Downloading file from S3...
+Uploading data to RDS...
+RDS failed. Falling back to Glue
 Glue fallback executed successfully
-📸 Deliverables
-✅ Shell script (ingest.sh)
-✅ Dockerfile
-✅ Logs showing:
-RDS success OR
-Glue fallback
-✅ Screenshot of:
-RDS table OR
-Glue table
-🧠 Challenges & Solutions
-❗ Challenge: Handling DB Failure
+```
 
-Solution: Used exit status ($?) for fallback logic
+## Verification
 
-❗ Challenge: AWS CLI in Docker
+* Verify data in RDS table after successful ingestion
+* Verify data in S3 and Glue table after fallback
+* Check container logs for execution details
 
-Solution: Used Amazon Linux base image
+## Challenges and Solutions
 
-🔐 Security Considerations
-Avoid hardcoding credentials
-Use IAM roles instead of access keys
-Restrict S3 and RDS permissions
-Secure config file:
-chmod 600 config.env
-🚀 Key Learnings
-Shell-based data pipelines
-AWS CLI automation
-Failure handling using bash
-Dockerizing scripts
-Real-world DevOps + Data Engineering integration
-🔮 Future Enhancements
-Add retry before fallback
-Use AWS Lambda for event-driven execution
-Add logging to Amazon CloudWatch
-Schema auto-detection for Glue
-🔥 GitHub Description
+**Challenge:** Handling database failures
+**Solution:** Used exit status to trigger fallback mechanism
 
-Shell script–based data ingestion pipeline that transfers data from S3 to RDS with automatic fallback to AWS Glue, fully containerized using Docker.
+**Challenge:** Running AWS CLI inside container
+**Solution:** Used Amazon Linux base image with required tools installed
 
-🏷️ GitHub Topics
-aws
-amazon-s3
-amazon-rds
-aws-glue
-bash
-shell-script
-docker
-data-pipeline
-etl
-devops
-cloud-computing
+## Security Considerations
+
+* Avoid hardcoding credentials in scripts
+* Use IAM roles instead of access keys
+* Restrict permissions for S3, RDS, and Glue
+* Secure configuration file using appropriate file permissions
+
+## Optional Enhancements
+
+* Add retry mechanism before fallback
+* Use AWS Lambda for event-driven execution
+* Integrate logging with CloudWatch
+* Implement schema detection for Glue
+
+## Key Learnings
+
+* Building shell-based data pipelines
+* Automating workflows using AWS CLI
+* Handling failures in data ingestion systems
+* Containerizing applications using Docker
+* Integrating DevOps and data engineering practices
+
+## Conclusion
+
+This project demonstrates a reliable and fault-tolerant approach to data ingestion using AWS services. It ensures that data is preserved even in failure scenarios and provides a flexible, containerized solution suitable for real-world applications.
